@@ -766,6 +766,59 @@ namespace networkFileShare
             return filesToSend;
         }
 
+        /// <summary>
+        /// Receive a message from the connected client
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <returns>a string of the received message</returns>
+        public string ReceiveMessage(NetworkStream stream)
+        {
+            byte[] data = new Byte[256];
+            int bytes = stream.Read(data, 0, data.Length);
+            string messageReceived = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+            return messageReceived;
+        }
+
+        /// <summary>
+        /// Receive a count from the connected client so we know how many data points to expect
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <returns></returns>
+        public int ReceiveCount(NetworkStream stream)
+        {
+            byte[] data = new Byte[4];
+            int bytes = stream.Read(data, 0, data.Length);
+            int numFilesReceived = BitConverter.ToInt32(data, 0);
+            return numFilesReceived;
+        }
+
+        /// <summary>
+        /// Send a message to the connected client
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="message"></param>
+        /// <returns>Will return true if no errors happen when trying to write the message</returns>
+        public bool SendMessage(NetworkStream stream, string message)
+        {
+            byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
+            int bytes = stream.Read(data, 0, data.Length);
+            stream.Write(data, 0, data.Length);
+            return true;
+        }
+
+        /// <summary>
+        /// Send a count of the data point we wish to send so they know how many to expect
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="count"></param>
+        /// <returns>returns true is no errors happen when trying to write the message</returns>
+        public bool SendCount(NetworkStream stream, int count)
+        {
+            byte[] data = BitConverter.GetBytes(count);
+            stream.Write(data, 0, data.Length);
+            return true;
+        }
+
         #endregion
     }
 }
