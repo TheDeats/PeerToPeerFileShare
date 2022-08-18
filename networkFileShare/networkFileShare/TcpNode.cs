@@ -18,7 +18,7 @@ namespace networkFileShare
         /// <summary>
         /// local tcp client used by client thread
         /// </summary>
-        private TcpClient client = null;
+        private TcpClient serverClient = null;
         /// <summary>
         /// Array of file paths found within a directory
         /// </summary>
@@ -213,16 +213,18 @@ namespace networkFileShare
 
                 //blocking call
                 Console.WriteLine("Server Waiting for a connection... ");
-                client = server.AcceptTcpClient();
+                serverClient = server.AcceptTcpClient();
 
                 //remove connected client ip from list of nodes to connect to
-                string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+                string clientIp = ((IPEndPoint)serverClient.Client.RemoteEndPoint).Address.ToString();
                 //Console.WriteLine($"Client string to remove: {clientIp}");
                 //Console.WriteLine($"IPRange 0: {ipRange[0]}");
                 if (ipRange.Contains(clientIp)){
                     ipRange.Remove(clientIp);
                     Console.WriteLine($"Server removed {clientIp}");
                 }
+
+                GetLatestFilesInDirectory();
 
                 //while (true)
                 //{
@@ -247,177 +249,105 @@ namespace networkFileShare
             try
             {
                 // Get a stream object for reading and writing
-                NetworkStream stream = client.GetStream();
+                NetworkStream stream = serverClient.GetStream();
 
                 //grab all the files and folders this container has
-                GetLatestFilesInDirectory();
+                //GetLatestFilesInDirectory();
                 //check the file paths and names I grabbed
                 //showFileAndDirCount();
                 //showDirAndFileNames();
 
                 //double check client isn't connected
-                string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+                //string clientIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
+
+
                 //receive count of all the client folders so we're ready to receive them
-                // Buffer to store the response bytes.
-                Byte[] data = new Byte[4];
-                // Read the response bytes
-                int bytes = stream.Read(data, 0, data.Length);
-                int numFoldersReceived = BitConverter.ToInt32(data, 0);
+                int numFoldersReceived = ReceiveCount(stream);
                 Console.WriteLine($"Received folder count of {numFoldersReceived} from client");
 
                 //send a count of all folders to the client so they can be ready to receive them
                 int folderCount = CountAllLocalFolders();
                 Console.WriteLine($"Found {folderCount} folders to send to client");
-                // Translate the passed message into ASCII and store it as a Byte array.
-                data = BitConverter.GetBytes(folderCount);
-                stream.Write(data, 0, data.Length);
+                SendCount(stream, folderCount);
                 Console.WriteLine($"Folder count of {folderCount} sent to client");
 
                 //receive all folder names and create a list of ones I need
-                data = new Byte[256];
                 String receivedText = "";
                 List<string> foldersNeeded = new List<string>();
                 for (int j = 0; j < numFoldersReceived; j++)
                 {
-                    bytes = stream.Read(data, 0, data.Length);
-                    receivedText = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+                    receivedText = ReceiveMessage(stream);
                     if (!Directory.Exists(@"./" + receivedText))
                     {
                         foldersNeeded.Add(receivedText);
                         Console.WriteLine($"Server: added this folder to list of ones we need bcause I couldnt find it: {receivedText}");
                     }
+                    SendMessage(stream, $"Received folder {receivedText} thanks");
                 }
 
                 //send all folder names
                 for (int j = 0; j < folderCount; j++)
                 {
-                    data = System.Text.Encoding.ASCII.GetBytes(FileDirNames[j][0]);
-                    stream.Write(data, 0, data.Length);
+                    SendMessage(stream, FileDirNames[j][0]);
                     Console.WriteLine($"Sent folder (from FileDirNames) {FileDirNames[j][0]} to client");
+                    ReceiveMessage(stream);
                 }
 
                 //receive a count of all folders they want so we're ready to receive they're names
-                // Buffer to store the response bytes.
-                data = new Byte[4];
                 // Read the response bytes
-                bytes = stream.Read(data, 0, data.Length);
-                numFoldersReceived = BitConverter.ToInt32(data, 0);
+                numFoldersReceived = ReceiveCount(stream);
                 Console.WriteLine($"Received needed folder count of {numFoldersReceived} from client");
 
                 //send a count of all folders I want so its ready to receive them
                 folderCount = foldersNeeded.Count;
                 // Translate the passed message into ASCII and store it as a Byte array.
-                data = BitConverter.GetBytes(folderCount);
-                stream.Write(data, 0, data.Length);
+                SendCount(stream, folderCount);
                 Console.WriteLine($"Needed folder count of {folderCount} sent to client");
 
                 //receive list of folders they want
-                data = new Byte[256];
                 receivedText = "";
                 List<string> foldersTheyWant = new List<string>();
                 for (int j = 0; j < numFoldersReceived; j++)
                 {
-                    bytes = stream.Read(data, 0, data.Length);
-                    receivedText = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+                    receivedText = ReceiveMessage(stream);
                     foldersTheyWant.Add(receivedText);
                     Console.WriteLine($"Server: added this folder to list of ones they need because I received it: {receivedText}");
+                    SendMessage(stream, $"Received wanted folder {receivedText} thanks");
                 }
 
                 //send list of folders I want
                 for (int j = 0; j < foldersNeeded.Count; j++)
                 {
-                    data = System.Text.Encoding.ASCII.GetBytes(foldersNeeded[j]);
-                    stream.Write(data, 0, data.Length);
+                    SendMessage(stream, foldersNeeded[j]);
                     Console.WriteLine($"Sent folder I need {foldersNeeded[j]} to client");
+                    ReceiveMessage(stream);
                 }
 
                 //receive count of files in all the folders we'll receive
-                // Buffer to store the response bytes.
-                data = new Byte[4];
-                // Read the response bytes
-                bytes = stream.Read(data, 0, data.Length);
-                int numFilesReceived = BitConverter.ToInt32(data, 0);
+                int numFilesReceived = ReceiveCount(stream);
                 Console.WriteLine($"Received file count of {numFilesReceived} from client");
 
                 //send count of files in all the folders they will receive
                 int numFilesToSend = CountFilesToSend(foldersTheyWant);
                 // Translate the passed message into ASCII and store it as a Byte array.
-                data = BitConverter.GetBytes(numFilesToSend);
-                stream.Write(data, 0, data.Length);
-                Console.WriteLine($"Sending {numFilesToSend} to client");
+                SendCount(stream, numFilesToSend);
+                Console.WriteLine($"Sent {numFilesToSend} to client");
 
                 //to receive all files (loop: get file name, get file)
-                string filePath = "";
-                string[] splitPath;
-                string folder = "";
-                string fileName = "";
                 for (int j = 0; j < numFilesReceived; j++)
                 {
-                    //get file path
-                    data = new Byte[256];
-                    bytes = stream.Read(data, 0, data.Length);
-                    Console.WriteLine($"Byets received: {bytes}");
-                    filePath = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-                    Console.WriteLine($"Server: Filepath received: {filePath}");
-
-                    //split the path to get the folder and file name
-                    splitPath = filePath.Split('/');
-                    folder = splitPath[1];
-                    fileName = splitPath[2];
-                    Console.WriteLine($"Server: received this file name: {fileName}");
-
-                    //get file
-                    data = new Byte[256];
-                    bytes = stream.Read(data, 0, data.Length);
-
-                    //create a directory for the file if needed
-                    Directory.CreateDirectory(".//" + splitPath[1]);
-
-                    //write all sent bytes to a files
-                    File.WriteAllBytes((".//" + splitPath[1] + "//" + splitPath[2]), data);
-                    Console.WriteLine("Saved file ./" + splitPath[1] + "/" + splitPath[2]);
+                    ReceiveFile(stream);
                 }
 
                 //to send all files (loop: send file path, send file)
                 List<string> filesToSend = getFilesToSend(foldersTheyWant);
-                byte[] fileBeingSent;
                 for (int j = 0; j < filesToSend.Count; j++)
                 {
-                    //send file path
-                    data = System.Text.Encoding.ASCII.GetBytes(filesToSend[j]);
-                    stream.Write(data, 0, data.Length);
-                    Console.WriteLine($"Sent the file name im about to send {filesToSend[j]}");
-
-                    //send file
-                    fileBeingSent = File.ReadAllBytes(filesToSend[j]);
-                    stream.Write(fileBeingSent, 0, fileBeingSent.Length);
-                    Console.WriteLine($"Sent file the server needed {filesToSend[j]}");
+                    SendFile(stream, filesToSend[j]);
                 }
 
-                //old
-                //int i;
-                // Loop to receive all the data sent by the client.
-                //while ((i = clientStream.Read(bytes, 0, bytes.Length)) != 0)
-                //{
-                // Translate data bytes to a ASCII string.
-                //data = System.Text.Encoding.ASCII.GetString(bytes, 0, i);
-                //Console.WriteLine($"Server received: {data}");
-
-                // Process the data sent by the client.
-                //data = "Got your message bitch";
-
-                //byte[] msg = System.Text.Encoding.ASCII.GetBytes(data);
-                //string fileName = allFiles[0];
-                //byte[] msg = File.ReadAllBytes(fileName);
-
-                // Send back a response.
-                //clientStream.Write(msg, 0, msg.Length);
-                //Console.WriteLine("Server sent: {0}", data);
-                //Console.WriteLine("Server sent file");
-                //}
-
                 // Shutdown and end connection
-                client.Close();
+                serverClient.Close();
 
             }
             catch (SocketException e)
@@ -474,155 +404,95 @@ namespace networkFileShare
                         NetworkStream stream = client.GetStream();
 
                         //grab all the files and folders this container has
-                        GetLatestFilesInDirectory();
+                        //GetLatestFilesInDirectory();
                         //check the file paths and names I grabbed
                         //showFileAndDirCount();
                         //showDirAndFileNames();
 
                         //send a count of all folders so the server so they can be ready to receive them
+                        Console.WriteLine("About to count folders");
                         int folderCount = CountAllLocalFolders();
                         Console.WriteLine($"folder count: {folderCount}");
-                        // Translate the passed message into ASCII and store it as a Byte array.
-                        Byte[] data = BitConverter.GetBytes(folderCount);
-                        stream.Write(data, 0, data.Length);
+                        SendCount(stream, folderCount);
                         Console.WriteLine($"Folder count of {folderCount} sent to server");
 
                         //receive count of all the server folders so we're ready to receive them
-                        // Buffer to store the response bytes.
-                        data = new Byte[4];
-                        // Read the response bytes
-                        int bytes = stream.Read(data, 0, data.Length);
-
-                        int numFoldersReceived = BitConverter.ToInt32(data, 0);
+                        int numFoldersReceived = ReceiveCount(stream);
                         Console.WriteLine($"Received folder count of {numFoldersReceived} from server");
 
                         //send all folder names
                         for( int j = 0; j < folderCount; j++)
                         {
-                            data = System.Text.Encoding.ASCII.GetBytes(FileDirNames[j][0]);
-                            stream.Write(data, 0, data.Length);
+                            SendMessage(stream, FileDirNames[j][0]);
                             Console.WriteLine($"Sent folder (from FileDirNames) {FileDirNames[j][0]} to server");
+                            ReceiveMessage(stream);
                         }
 
                         //receive all folder names and create a list of ones I need
-                        data = new Byte[256];
                         String receivedText = "";
                         List<string> foldersNeeded = new List<string>();
                         for (int j = 0; j < numFoldersReceived; j++)
                         {
-                            bytes = stream.Read(data, 0, data.Length);
-                            receivedText = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+                            receivedText = ReceiveMessage(stream);
                             if(!Directory.Exists(@"./" + receivedText))
                             {
                                 foldersNeeded.Add(receivedText);
                                 Console.WriteLine($"Client: added this folder to list of ones we need bcause I couldnt find it: {receivedText}");
                             }
+                            SendMessage(stream, $"client received folder {receivedText}");
                         }
 
                         //send a count of all folders I want so its ready to receive them
                         folderCount = foldersNeeded.Count;
-                        // Translate the passed message into ASCII and store it as a Byte array.
-                        data = BitConverter.GetBytes(folderCount);
-                        stream.Write(data, 0, data.Length);
+                        SendCount(stream, folderCount);
                         Console.WriteLine($"Needed folder count of {folderCount} sent to server");
 
                         //receive a count of all folders they want so we're ready to receive they're names
-                        // Buffer to store the response bytes.
-                        data = new Byte[4];
                         // Read the response bytes
-                        bytes = stream.Read(data, 0, data.Length);
-                        numFoldersReceived = BitConverter.ToInt32(data, 0);
+                        numFoldersReceived = ReceiveCount(stream);
                         Console.WriteLine($"Received needed folder count of {numFoldersReceived} from server");
 
                         //send list of folders I want
                         for (int j = 0; j < foldersNeeded.Count; j++)
                         {
-                            data = System.Text.Encoding.ASCII.GetBytes(foldersNeeded[j]);
-                            stream.Write(data, 0, data.Length);
+                            SendMessage(stream, foldersNeeded[j]);
                             Console.WriteLine($"Sent folder I need {foldersNeeded[j]} to server");
+                            ReceiveMessage(stream);
                         }
 
                         //receive list of folders they want
-                        data = new Byte[256];
                         receivedText = "";
                         List<string> foldersTheyWant = new List<string>();
                         for (int j = 0; j < numFoldersReceived; j++)
                         {
-                            bytes = stream.Read(data, 0, data.Length);
-                            receivedText = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
+                            receivedText = ReceiveMessage(stream);
                             foldersTheyWant.Add(receivedText);
                             Console.WriteLine($"Client: added this folder to list of ones they need because I received it: {receivedText}");
+                            SendMessage(stream, $"client received wanted folder {receivedText} thanks");
                         }
 
                         //send count of files in all the folders they will receive
                         int numFilesToSend = CountFilesToSend(foldersTheyWant);
                         if (numFilesToSend > 0)
                         {
-                            // Translate the passed message into ASCII and store it as a Byte array.
-                            data = data = BitConverter.GetBytes(numFilesToSend);
-                            stream.Write(data, 0, data.Length);
-                            Console.WriteLine($"Sending {numFilesToSend} to server");
+                            SendCount(stream, numFilesToSend);
                         }
-                        
+
                         //receive count of files in all the folders we'll receive
-                        // Buffer to store the response bytes.
-                        data = new Byte[4];
-                        // Read the response bytes
-                        bytes = stream.Read(data, 0, data.Length);
-                        int numFilesReceived = BitConverter.ToInt32(data, 0);
+                        int numFilesReceived = ReceiveCount(stream);
                         Console.WriteLine($"Received file count of {numFilesReceived} from server");
 
                         //to send all files (loop: send file path, send file)
                         List<string> filesToSend = getFilesToSend(foldersTheyWant);
-                        byte[] fileBeingSent;
                         for (int j = 0; j < filesToSend.Count; j++)
                         {
-                            //send file path
-                            data = new Byte[256];
-                            data = System.Text.Encoding.ASCII.GetBytes(filesToSend[j]);
-
-                            //testing
-                            string testing = System.Text.Encoding.ASCII.GetString(data, 0, data.Length);
-                            Console.WriteLine($"This is what im sending {testing}");
-                            Console.WriteLine($"Sending {data.Length} bytes");
-
-                            stream.Write(data, 0, data.Length);
-                            Console.WriteLine($"Client: Sent the file name {filesToSend[j]}");
-
-                            //send file
-                            fileBeingSent = File.ReadAllBytes(filesToSend[j]);
-                            stream.Write(fileBeingSent, 0, fileBeingSent.Length);
-                            Console.WriteLine($"Client: Sent file the server needed {filesToSend[j]}");
+                            SendFile(stream, filesToSend[j]);
                         }
 
                         //to receive all files (loop: get file name, get file)
-                        string filePath = "";
-                        string[] splitPath;
-                        string folder = "";
-                        string fileName = "";
                         for (int j = 0; j < numFilesReceived; j++)
                         {
-                            //get file path
-                            data = new Byte[256];
-                            bytes = stream.Read(data, 0, data.Length);
-                            filePath = System.Text.Encoding.ASCII.GetString(data, 0, bytes);
-
-                            //split the path to get the folder and file name
-                            splitPath = filePath.Split('/');
-                            folder = splitPath[1];
-                            fileName = splitPath[2];
-                            Console.WriteLine($"Client: received this file name: {fileName}");
-
-                            //get file
-                            data = new Byte[256];
-                            bytes = stream.Read(data, 0, data.Length);
-
-                            //create a directory for the file if needed
-                            Directory.CreateDirectory(".//" + splitPath[1]);
-
-                            //write all sent bytes to a files
-                            File.WriteAllBytes((".//" + splitPath[1] + "//" + splitPath[2]), data);
-                            Console.WriteLine("Saved file ./" + splitPath[1] + "/" + splitPath[2]);
+                            ReceiveFile(stream);
                         }
 
                         //done sending files, close the connection and connect to the next server
@@ -783,7 +653,7 @@ namespace networkFileShare
         /// Receive a count from the connected client so we know how many data points to expect
         /// </summary>
         /// <param name="stream"></param>
-        /// <returns></returns>
+        /// <returns>returns true is no errors happen when trying to receive the message</returns>
         public int ReceiveCount(NetworkStream stream)
         {
             byte[] data = new Byte[4];
@@ -797,11 +667,10 @@ namespace networkFileShare
         /// </summary>
         /// <param name="stream"></param>
         /// <param name="message"></param>
-        /// <returns>Will return true if no errors happen when trying to write the message</returns>
+        /// <returns>Will return true if no errors happen when trying to receive the count</returns>
         public bool SendMessage(NetworkStream stream, string message)
         {
             byte[] data = System.Text.Encoding.ASCII.GetBytes(message);
-            int bytes = stream.Read(data, 0, data.Length);
             stream.Write(data, 0, data.Length);
             return true;
         }
@@ -811,11 +680,73 @@ namespace networkFileShare
         /// </summary>
         /// <param name="stream"></param>
         /// <param name="count"></param>
-        /// <returns>returns true is no errors happen when trying to write the message</returns>
+        /// <returns>returns true is no errors happen when trying to send the message</returns>
         public bool SendCount(NetworkStream stream, int count)
         {
             byte[] data = BitConverter.GetBytes(count);
             stream.Write(data, 0, data.Length);
+            return true;
+        }
+
+        /// <summary>
+        /// Receive a file from the connected client and save it
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <returns>returns true is no errors happen when trying to receive the file</returns>
+        public bool ReceiveFile(NetworkStream stream)
+        {
+            string filePath = "";
+            string[] splitPath;
+            string folder = "";
+            string fileName = "";
+            byte[] data = new Byte[256];
+
+            //get file path
+            filePath = ReceiveMessage(stream);
+            Console.WriteLine($"Server: Filepath received: {filePath}");  //testing only
+            SendMessage(stream, "got the filePath thanks");
+
+            //split the path to get the folder and file name
+            splitPath = filePath.Split('/');
+            folder = splitPath[1];
+            fileName = splitPath[2];
+            Console.WriteLine($"Server: received this file name: {fileName}");  //testing only
+
+            //get file
+            stream.Read(data, 0, data.Length);
+
+            //create a directory for the file if needed
+            Directory.CreateDirectory(".//" + folder);
+
+            //write all sent bytes to a files
+            File.WriteAllBytes((".//" + folder + "//" + fileName), data);
+            Console.WriteLine("Saved file ./" + folder + "/" + fileName);  //testing only
+            SendMessage(stream, $"got the file {fileName} thanks");
+
+            return true;
+        }
+
+        /// <summary>
+        /// Send a file to the connected client
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="filePath"></param>
+        /// <returns>returns true is no errors happen when trying to send the file</returns>
+        public bool SendFile(NetworkStream stream, string filePath)
+        {
+            byte[] fileBeingSent;
+
+            //send file path
+            SendMessage(stream, filePath);
+            Console.WriteLine($"Sent the file name im about to send {filePath}");  //testing only
+            ReceiveMessage(stream);
+
+            //send file
+            fileBeingSent = File.ReadAllBytes(filePath);
+            stream.Write(fileBeingSent, 0, fileBeingSent.Length);
+            Console.WriteLine($"Sent file the server needed {filePath}");  //testing only
+            ReceiveMessage(stream);
+
             return true;
         }
 

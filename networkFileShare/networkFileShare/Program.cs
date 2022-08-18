@@ -24,7 +24,7 @@ namespace networkFileShare
         {
             //Declaring port used and maximum number of nodes supported
             Int32 port = 13000;
-            int maxNodes = 20;
+            int maxNodes = 10;
 
             List<string> ipRange = new List<string>();
 
