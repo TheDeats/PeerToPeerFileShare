@@ -5,7 +5,7 @@ services:
     build: .
     working_dir: /files
     volumes:
-      - C:/Repos/CECS327/su-22-327-lab-2-peer-to-peer-networks/node1:/files/
+      - C:\Repos\PeerToPeerFileShare\node1:/files/
     env_file:
       - ./.env
     networks:
@@ -18,7 +18,7 @@ services:
     build: .
     working_dir: /files
     volumes:
-      - C:/Repos/CECS327/su-22-327-lab-2-peer-to-peer-networks/node2:/files/
+      - C:\Repos\PeerToPeerFileShare\node2:/files/
     env_file:
       - ./.env
     depends_on:
@@ -44,7 +44,7 @@ networks:
   #   build: .
   #   working_dir: /files
   #   volumes:
-  #     - C:/Repos/CECS327/su-22-327-lab-2-peer-to-peer-networks/node3:/files/
+  #     - C:\Repos\PeerToPeerFileShare\node3:/files/
   #   env_file:
   #     - ./.env
   #   depends_on:
@@ -60,7 +60,7 @@ networks:
   #   build: .
   #   working_dir: /files
   #   volumes:
-  #     - C:/Repos/CECS327/su-22-327-lab-2-peer-to-peer-networks/node4:/files/
+  #     - C:\Repos\PeerToPeerFileShare\node4:/files/
   #   env_file:
   #     - ./.env
   #   depends_on:

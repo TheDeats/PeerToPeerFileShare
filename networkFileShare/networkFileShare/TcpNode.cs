@@ -103,11 +103,12 @@ namespace networkFileShare
                 if (Directory.Exists(dir))
                 {
                     string[] subDirectories = Directory.GetDirectories(dir);
+
                     AllFilesPaths = new string[subDirectories.Length][];
                     FileDirNames = new string[subDirectories.Length][];
                     for (int i = 0; i < subDirectories.Length; i++)
                     {
-                        //Console.WriteLine($"Looking in directory {subDirectories[i]}");
+                        Console.WriteLine($"Looking in directory {subDirectories[i]}");
 
                         //get all file paths in a directory
                         AllFilesPaths[i] = Directory.GetFiles(subDirectories[i]);
@@ -224,8 +225,6 @@ namespace networkFileShare
                     Console.WriteLine($"Server removed {clientIp}");
                 }
 
-                GetLatestFilesInDirectory();
-
                 //while (true)
                 //{
 
@@ -252,7 +251,7 @@ namespace networkFileShare
                 NetworkStream stream = serverClient.GetStream();
 
                 //grab all the files and folders this container has
-                //GetLatestFilesInDirectory();
+                GetLatestFilesInDirectory();
                 //check the file paths and names I grabbed
                 //showFileAndDirCount();
                 //showDirAndFileNames();
@@ -404,7 +403,7 @@ namespace networkFileShare
                         NetworkStream stream = client.GetStream();
 
                         //grab all the files and folders this container has
-                        //GetLatestFilesInDirectory();
+                        GetLatestFilesInDirectory();
                         //check the file paths and names I grabbed
                         //showFileAndDirCount();
                         //showDirAndFileNames();
